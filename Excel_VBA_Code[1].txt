@@ -1,0 +1,150 @@
+Sub GenerateStudySubjectTimeFiles()
+
+    Dim wsExpr As Worksheet, wsMap As Worksheet
+    Dim lastRowExpr As Long, lastColExpr As Long
+    Dim lastRowMap As Long
+    Dim i As Long, j As Long
+    
+    Dim cel As String
+    Dim gene As Variant
+    Dim subject As Variant
+    Dim study As Variant
+    Dim timeHours As String
+    
+    Dim celToMeta As Object
+    Dim geneList As Object
+    Dim studyDict As Object
+    Dim subjDict As Object
+    Dim subjectTimeDict As Object
+    
+    ' Assign input worksheets
+    Set wsExpr = ThisWorkbook.Sheets("Expression")
+    Set wsMap = ThisWorkbook.Sheets("Mapping")
+    
+    ' Create dictionaries
+    Set celToMeta = CreateObject("Scripting.Dictionary")
+    Set geneList = CreateObject("Scripting.Dictionary")
+    Set studyDict = CreateObject("Scripting.Dictionary")
+    Set subjDict = CreateObject("Scripting.Dictionary")
+    Set subjectTimeDict = CreateObject("Scripting.Dictionary")
+    
+    ' Build CEL ? (STUDYID, SUBJECTID, TIMEHOURS) map
+    lastRowMap = wsMap.Cells(wsMap.Rows.Count, 1).End(xlUp).Row
+    For i = 2 To lastRowMap
+        cel = wsMap.Cells(i, wsMap.Columns("L").Column).Value
+        study = wsMap.Cells(i, wsMap.Columns("A").Column).Value
+        subject = wsMap.Cells(i, wsMap.Columns("B").Column).Value
+        timeHours = wsMap.Cells(i, wsMap.Columns("J").Column).Value
+        
+        celToMeta(cel) = study & "|" & subject & "|" & timeHours
+        
+        studyDict(study) = 1
+        subjDict(study & "|" & subject) = 1
+        
+        ' Build subject-time dictionary for column order
+        If Not subjectTimeDict.Exists(study & "|" & subject & "|" & timeHours) Then
+            subjectTimeDict(study & "|" & subject & "|" & timeHours) = 1
+        End If
+    Next i
+    
+    ' Read gene list
+    lastRowExpr = wsExpr.Cells(wsExpr.Rows.Count, 1).End(xlUp).Row
+    For i = 2 To lastRowExpr
+        gene = wsExpr.Cells(i, 1).Value
+        geneList(gene) = i
+    Next i
+    
+    ' Process for each STUDYID
+    For Each study In studyDict.Keys
+        
+        Dim wbOut As Workbook
+        Set wbOut = Workbooks.Add
+        
+        ' Process each SUBJECTID within the STUDYID
+        For Each key In subjDict.Keys
+            If Split(key, "|")(0) = study Then
+                subject = Split(key, "|")(1)
+                
+                ' Create subject sheet
+                Dim safeSubject As String
+                safeSubject = SanitizeFileName(CStr(subject))
+                
+                Dim wsSubj As Worksheet
+                Set wsSubj = wbOut.Sheets.Add(After:=wbOut.Sheets(wbOut.Sheets.Count))
+                wsSubj.Name = safeSubject
+                
+                ' Write gene names in column A
+                wsSubj.Cells(1, 1).Value = "FEATUREID"
+                For Each gene In geneList.Keys
+                    wsSubj.Cells(geneList(gene), 1).Value = gene
+                Next gene
+                
+                ' Build TIMEHOURS columns for this subject
+                Dim colDict As Object
+                Set colDict = CreateObject("Scripting.Dictionary")
+                Dim colCounter As Long: colCounter = 2
+                
+                For Each timeKey In subjectTimeDict.Keys
+                    Dim parts() As String
+                    parts = Split(timeKey, "|")
+                    If parts(0) = study And parts(1) = subject Then
+                        timeHours = parts(2)
+                        If Not colDict.Exists(timeHours) Then
+                            colDict(timeHours) = colCounter
+                            wsSubj.Cells(1, colCounter).Value = timeHours
+                            colCounter = colCounter + 1
+                        End If
+                    End If
+                Next timeKey
+                
+                ' Fill expression values by matching CEL file
+                lastColExpr = wsExpr.Cells(1, wsExpr.Columns.Count).End(xlToLeft).Column
+                For j = 2 To lastColExpr
+                    cel = wsExpr.Cells(1, j).Value
+                    If celToMeta.Exists(cel) Then
+                        Dim metaParts() As String
+                        metaParts = Split(celToMeta(cel), "|")
+                        If metaParts(0) = study And metaParts(1) = subject Then
+                            timeHours = metaParts(2)
+                            For i = 2 To lastRowExpr
+                                wsSubj.Cells(i, colDict(timeHours)).Value = wsExpr.Cells(i, j).Value
+                            Next i
+                        End If
+                    End If
+                Next j
+                
+            End If
+        Next key
+        
+        ' Delete default empty sheet
+        Application.DisplayAlerts = False
+        For Each ws In wbOut.Sheets
+            If ws.UsedRange.Address = "$A$1" Then ws.Delete
+        Next ws
+        Application.DisplayAlerts = True
+        
+        ' Save file as sanitized STUDYID.xlsx
+        Dim safeStudy As String
+        safeStudy = SanitizeFileName(CStr(study))
+        wbOut.SaveAs ThisWorkbook.Path & "\" & safeStudy & ".xlsx"
+        wbOut.Close
+        
+    Next study
+    
+    MsgBox "All files created successfully!"
+
+End Sub
+
+' Helper function to sanitize file names
+Function SanitizeFileName(fileName As Variant) As String
+    Dim invalidChars As Variant
+    Dim i As Long
+    invalidChars = Array("\", "/", ":", "*", "?", Chr(34), "<", ">", "|", " ")
+    
+    SanitizeFileName = fileName
+    
+    For i = LBound(invalidChars) To UBound(invalidChars)
+        SanitizeFileName = Replace(SanitizeFileName, invalidChars(i), "_")
+    Next i
+End Function
+
