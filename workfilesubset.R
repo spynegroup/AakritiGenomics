@@ -4,18 +4,23 @@ library(readr)
 library(stringr)
 
 
-map <- read_tsv("Mapping.tsv", col_types = cols())
+setwd("C:\\Users\\sapta\\Documents\\GitHub\\AakritiGenomics")
 
+# map <- readr::read_tsv("Mapping.tsv", col_types = cols())
+map <- readr::read_tsv("assets\\RVDCdataset\\Clinical\\ViralChallenge_training_CLINICAL.tsv", col_types = cols())
 
-colnames(map)[c(1,2,10,12)] <- c("STUDYID", "SUBJECTID", "TIMEHOURS", "CEL")
+# colnames(map)[c(1,2,10,12)] <- c("STUDYID", "SUBJECTID", "TIMEHOURS", "CEL")
 
 
 cel_to_meta <- map %>%
-  mutate(Key = paste(STUDYID, SUBJECTID, TIMEHOURS, sep = "|")) %>%
-  select(CEL, Key)
+  dplyr::mutate(Key = paste(STUDYID, SUBJECTID, TIMEHOURS, sep = "|")) %>%
+  dplyr::select(CEL, Key)
 
 cel_dict <- setNames(cel_to_meta$Key, cel_to_meta$CEL)
-expr <- read_tsv("Expression.tsv", col_types = cols())
+
+# expr <- read_tsv("Expression.tsv", col_types = cols())
+expr <- read_tsv("assets\\RVDCdataset\\Expression\\ViralChallenge_training_EXPRESSION_RMA.tsv", col_types = cols())
+
 genes <- expr$FEATUREID
 
 study_list <- unique(map$STUDYID)
